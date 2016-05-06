@@ -1,10 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define SCREEN_WIDTH		84
-#define SCREEN_HEIGHT		48
+#define SCREEN_WIDTH			84
+#define SCREEN_HEIGHT			48
 
-#define UP					1
+#define UP				1
 #define RIGHT				2
 #define DOWN				3
 #define LEFT				4
@@ -13,7 +13,7 @@
 int SNAKE_SPEED				= 1; 		//initial snake speed
 int GAME_LEVEL				= 1;		//initial level
 int SNAKE_DIR				= LEFT;		//initial snake direction
-int SNAKE_INITIAL_LENGTH	= 10;		//initial snake length
+int SNAKE_INITIAL_LENGTH		= 10;		//initial snake length
 
 int SNAKE_BOARD[SCREEN_HEIGHT][SCREEN_WIDTH];
 
