@@ -60,7 +60,6 @@ void IO_init()
 	/* Sting LED-ul. */
 	PORTD &= ~(1 << PD7);
 	
-    
     // butoanele sunt puse ca intrare, cu rezistenta de pull-up
     DDRB &= ~((1 << PB0) | (1 << PB1) | (1 << PB2) | (1 << PB3));
     PORTB |= ((1 << PB0) | (1 << PB1) | (1 << PB2) | (1 << PB3));
@@ -68,7 +67,7 @@ void IO_init()
     // intreruperile sunt activate pentru PCINT8 (PB0) si PCINT9 (PB1)
     PCICR  = (1 << PCIE1);
     PCMSK1 = (1 << PCINT8) | (1 << PCINT9) | (1 << PCINT10) | (1 << PCINT11);
-
+    
 	sei();
 }
 
