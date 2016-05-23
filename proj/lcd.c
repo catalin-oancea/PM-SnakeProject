@@ -16,12 +16,6 @@
 #include <util/delay.h>
 #include "lcd.h"
 
-/* delay macro function */
-#define lcd_delay() for (int i = -32000; i < 32000; i++)
-
-/* The lcd cursor position */
-int lcdCacheIdx;
-
 /* Alphabet lookup */
 unsigned char PROGMEM font5x7 [][5] = {
     { 0x00, 0x00, 0x00, 0x00, 0x00 },   // sp
@@ -122,17 +116,23 @@ unsigned char PROGMEM font5x7 [][5] = {
     { 0x3E, 0x3E, 0x3E, 0x3E, 0x3E },   // Stop
     { 0x00, 0x7F, 0x3E, 0x1C, 0x08 }    // Play
 };
+static unsigned char cursor_row = 0; /* 0-5 */
+static unsigned char cursor_col = 0; /* 0-83 */
+static unsigned char buffer[6][84];	
+
+/* Function prototypes */
+static void lcd_send(unsigned char data, LcdCmdData cd);
 
 /* Performs IO & LCD controller initialization */
-void lcd_init(void)
-{
+void lcd_init(void) {
+
     // Pull-up on reset pin
     LCD_PORT |= LCD_RST_PIN;
 
-    // Set output bits on lcd port
-    LCD_DDR |= LCD_RST_PIN | LCD_CE_PIN | LCD_DC_PIN | LCD_DATA_PIN | LCD_CLK_PIN;
+	// Set output bits on lcd port
+	LCD_DDR |= LCD_RST_PIN | LCD_CE_PIN | LCD_DC_PIN | LCD_DATA_PIN | LCD_CLK_PIN;
 
-    // Wait after VCC high for reset (max 30ms)
+	// Wait after VCC high for reset (max 30ms)
     _delay_ms(15);
 
     // Toggle display reset pin
@@ -152,127 +152,128 @@ void lcd_init(void)
 
     // Clear lcd
     lcd_clear();
-
-    // For using printf
-    fdevopen(lcd_chr, 0);
 }
 
-/* Set display contrast. Note: No change is visible at ambient temperature */
-void lcd_contrast(unsigned char contrast)
-{
-    lcd_send(0x21, LCD_CMD);                // LCD Extended Commands
-    lcd_send(0x80 | contrast, LCD_CMD);     // Set LCD Vop(Contrast)
-    lcd_send(0x20, LCD_CMD);                // LCD std cmds, hori addr mode
+/**
+  *	Schimba adresa pointerului la pixelul 'addr'
+  *  x - numarul coloanei (din 84 posibile
+  *	 y - numarul linie ( din 6 posibile)
+  */
+void lcd_gotoXY(uint8_t x, uint8_t y) {
+
+	lcd_send(0x80 | x , LCD_CMD);
+	lcd_send(0x40 | y , LCD_CMD);
+	
+	cursor_row = y;
+	cursor_col = x;
+
 }
 
-/* Clears the display */
-void lcd_clear(void)
-{
-    lcdCacheIdx = 0;
+void lcd_clear(void) {
 
-    lcd_base_addr(lcdCacheIdx);
+	int i, j;
+	
+	lcd_gotoXY(0, 0);  //start with (0,0) position
 
-    // Set the entire cache to zero and write 0s to lcd
-    for (int i = 0; i < LCD_CACHE_SIZE; i++) {
-        lcd_send(0, LCD_DATA);
-    }
+	for(i = 0; i < 6; i++) {
+		lcd_gotoXY(0, i);
+		for(j = 0; j < 84; j++) {
+			//lcd_send(0x00, LCD_DATA);
+			buffer[i][j] = 0x00;
+		}
+	}
+	
+    lcd_gotoXY(0, 0);	//bring the XY position back to (0,0)
+      
 }
 
-/* Clears an area on a line */
-void lcd_clear_area(unsigned char line, unsigned char startX, unsigned char endX)
-{
-    // Start and end positions of line
-    int start = (line - 1) * 84 + (startX - 1);
-    int end = (line - 1) * 84 + (endX - 1);
+void lcd_putchr(unsigned char ch) {
 
-    lcd_base_addr(start);
+	unsigned char j;
+	
+	//buffer[cursor_row][cursor_col] = 0x00;
+	for(j = 0; j < 5; j++)
+		buffer[cursor_row][cursor_col + j] =  pgm_read_byte(&font5x7[ch - 32][j]) << 1;
 
-    // Clear all data in range from cache
-    for (unsigned int i = start; i<end; i++) {
-        lcd_send(0, LCD_DATA);
-    }
-}
+	//buffer[cursor_row][cursor_col + 6] = 0x00;
 
-/* Clears an entire text block. (rows of 8 pixels on the lcd) */
-void lcd_clear_line(unsigned char line)
-{
-    lcd_clear_area(line, 1, LCD_X_RES);
-}
+	for(j = 0; j < 7; j++)
+		lcd_send(buffer[cursor_row][cursor_col + j], LCD_DATA);
 
-/* Sets cursor location to xy location corresponding to basic font size */
-void lcd_goto_xy(unsigned char x, unsigned char y)
-{
-    lcdCacheIdx = (x - 1) * 6 + (y - 1) * 84;
-}
+} 
 
-/* Sets cursor location to exact xy pixel location on the lcd */
-void lcd_goto_xy_exact(unsigned char x, unsigned char y)
-{
-    lcdCacheIdx = (x - 1) + (y - 1) * 84;
-}
+void lcd_str(char *str) {
 
-/* Displays a character at current cursor location */
-void lcd_chr(char chr)
-{
-    lcd_base_addr(lcdCacheIdx);
+	while(*str){
+		lcd_putchr(*str++);
+	}
 
-    // 5 pixel wide characters and add space
-    for (unsigned char i = 0; i < 5; i++) {
-        lcd_send(pgm_read_byte(&font5x7[chr - 32][i]) << 1, LCD_DATA);
-    }
-    lcd_send(0, LCD_DATA);
-
-    lcdCacheIdx += 6;
-}
-
-/* Displays string at current cursor location and increment cursor location */
-void lcd_str(char *str)
-{
-    while (*str) {
-        lcd_chr(*str++);
-    }
-}
-
-// Set the base address of the lcd
-void lcd_base_addr(unsigned int addr) {
-    lcd_send(0x80 | (addr % LCD_X_RES), LCD_CMD);
-    lcd_send(0x40 | (addr / LCD_X_RES), LCD_CMD);
 }
 
 /* Sends data to display controller */
-void lcd_send(unsigned char data, LcdCmdData cd)
-{
-    // Data/DC are outputs for the lcd (all low)
-    LCD_DDR |= LCD_DATA_PIN | LCD_DC_PIN;
+static void lcd_send(unsigned char data, LcdCmdData cd) {
 
     // Enable display controller (active low)
     LCD_PORT &= ~LCD_CE_PIN;
 
     // Either command or data
-    if (cd == LCD_DATA) {
+    if(cd == LCD_DATA) {
         LCD_PORT |= LCD_DC_PIN;
     } else {
         LCD_PORT &= ~LCD_DC_PIN;
     }
 
-    for (unsigned char i = 0; i < 8; i++) {
+	for (unsigned char i=0;i<8;i++) {
+		// Set the DATA pin value
+		if((data>>(7-i)) & 0x01) {
+			LCD_PORT |= LCD_DATA_PIN;
+		} else {
+			LCD_PORT &= ~LCD_DATA_PIN;
+		}
 
-        // Set the DATA pin value
-        if ((data >> (7 - i)) & 0x01) {
-            LCD_PORT |= LCD_DATA_PIN;
-        } else {
-            LCD_PORT &= ~LCD_DATA_PIN;
-        }
+		// Toggle the clock
+		LCD_PORT |= LCD_CLK_PIN;
+		LCD_PORT &= ~LCD_CLK_PIN;
+	}
 
-        // Toggle the clock
-        LCD_PORT |= LCD_CLK_PIN;
-        LCD_PORT &= ~LCD_CLK_PIN;
-    }
-
-    // Disable display controller
+	// Disable display controller
     LCD_PORT |= LCD_CE_PIN;
 
-    // Data/DC can be used as button inputs when not sending to LCD (/w pullups)
-    LCD_DDR &= ~(LCD_DATA_PIN | LCD_DC_PIN);
-    LCD_PORT |= LCD_DATA_PIN | LCD_DC_PIN;
+}
+
+void lcd_update(void) {
+	
+	int i, j;
+
+	for (i = 0; i < 6; i++) {
+		lcd_gotoXY(0, i);
+		for (j=0; j < 84; j++)
+			lcd_send(buffer[i][j], LCD_DATA);
+	}
+	
+	lcd_gotoXY(0, 0);	//bring the XY position back to (0,0)
+
+}
+
+void lcd_setpixel(unsigned char x, unsigned char y) {
+
+	unsigned char value;
+	unsigned char row;
+	
+	row = y / 8;
+
+	value = buffer[row][x];
+	value |= (1 << (y % 8));
+	buffer[row][x] = value;
+
+	lcd_gotoXY(x, row);
+	lcd_send(value, LCD_DATA);
+
+}
+
+/* Set display contrast. Note: No change is visible at ambient temperature */
+void lcd_contrast(unsigned char contrast) {
+	lcd_send(0x21, LCD_CMD);				// LCD Extended Commands
+	lcd_send(0x80 | contrast, LCD_CMD);		// Set LCD Vop(Contrast)
+	lcd_send(0x20, LCD_CMD);				// LCD std cmds, hori addr mode
 }
