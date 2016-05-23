@@ -41,15 +41,16 @@ void lcd_base_addr(unsigned int addr);
 /* Command type sent to the lcd */
 typedef enum { LCD_CMD  = 0, LCD_DATA = 1 } LcdCmdData;
 
+/* Macro pt delay delay */
+#define lcd_delay() for(volatile int i=-32000;i<32000;i++)
+
 void lcd_init(void);
 void lcd_contrast(unsigned char contrast);
 void lcd_clear(void);
-void lcd_clear_area(unsigned char line, unsigned char startX, unsigned char endX);
-void lcd_clear_line(unsigned char line);
-void lcd_goto_xy(unsigned char x, unsigned char y);
-void lcd_goto_xy_exact(unsigned char x, unsigned char y);
-void lcd_chr(char chr);
-void lcd_str(char* str);
-void lcd_send(unsigned char data, LcdCmdData cd);
+void lcd_putchr(unsigned char ch);
+void lcd_str(char *str);
+void lcd_gotoXY(uint8_t x, uint8_t y);
+void lcd_update( void );
+void lcd_setpixel(unsigned char x, unsigned char y);
 
 #endif
