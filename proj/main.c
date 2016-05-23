@@ -11,6 +11,7 @@
 #include <avr/signal.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdbool.h>
 #include "lcd.h"
 
@@ -30,13 +31,17 @@
 #define DOWN				3
 #define LEFT				4
 
-int SNAKE_SPEED				=  300; 		//initial snake speed
+int SNAKE_SPEED				=  150; 		//initial snake speed
 int GAME_LEVEL				= 1;		//initial level
 int SNAKE_DIR				= LEFT;		//initial snake direction
 int SNAKE_INITIAL_LENGTH		= 15;		//initial snake length
 
+int SCORE = 0;
+
 int OBSTACLES_X[MAX_OBSTACLES];
 int OBSTACLES_Y[MAX_OBSTACLES];
+
+int MOMEALA_X, MOMEALA_Y;
 
 typedef struct node {
     int x_coord;
@@ -71,18 +76,55 @@ void get_level_1_obstacles() {
 	int i, k = 0;
 	
 	reset_obstacles();
+	for (i = 14; i < 60; i++) { OBSTACLES_X[k] = 16; OBSTACLES_Y[k] = i; k++; }
+	for(i = 14; i < 60; i++) { OBSTACLES_X[k] = 32; OBSTACLES_Y[k] = i; k++; }
+}
+
+/*
++--------+--------+
+|                 |
+|        |        |
++-    ---+---    -+
+|        |        |
+|                 |
++--------+--------+
+*/
+void get_level_2_obstacles() {
+	int i, k = 0;
 	
+	reset_obstacles();
 	for (i = 14; i < 60; i++) {
-		OBSTACLES_X[k] = 16;
+		OBSTACLES_X[k] = 24;
 		OBSTACLES_Y[k] = i;
+		k++;
+	}
+	for (i = 0; i < 5; i++) {
+		OBSTACLES_X[k] = 24;
+		OBSTACLES_Y[k] = i;
+		k++;
+	}
+	for (i = 83; i > 79; i--) {
+		OBSTACLES_X[k] = 24;
+		OBSTACLES_Y[k] = i;
+		k++;
+	}
+	for (i = 0; i < 5; i++) {
+		OBSTACLES_X[k] = i;
+		OBSTACLES_Y[k] = 42;
+		k++;
+	}
+	for (i = 43; i < 48; i++) {
+		OBSTACLES_X[k] = i;
+		OBSTACLES_Y[k] = 42;
+		k++;
+	}
+	for (i = 18; i < 29; i++) {
+		OBSTACLES_X[k] = i;
+		OBSTACLES_Y[k] = 42;
 		k++;
 	}
 	
-	for(i = 14; i < 60; i++) {
-		OBSTACLES_X[k] = 32;
-		OBSTACLES_Y[k] = i;
-		k++;
-	}
+	
 	
 }
 
@@ -107,8 +149,30 @@ node_t* move_snake (node_t *snake) {
 	//Remove tail of the snake
 	while (curr->next->next != NULL)
 		curr = curr->next;
+	free(curr->next);
 	curr->next = NULL;
 
+	//Add element in front of the snake's head
+	node_t* new_snake = malloc(sizeof(node_t));
+	new_snake->x_coord = new_x_coord;
+	new_snake->y_coord = new_y_coord;
+	new_snake->next = snake;
+
+	return new_snake;
+}
+
+node_t* increase_snake(node_t *snake) {
+	int new_x_coord = snake->x_coord;
+	int new_y_coord = snake->y_coord;
+
+	switch (SNAKE_DIR) {
+		case UP: 	new_x_coord--; 	break;
+		case DOWN: 	new_x_coord++; 	break;
+		case LEFT: 	new_y_coord--; 	break;
+		case RIGHT: new_y_coord++; 	break;
+		default: 	exit(0);
+	}
+	
 	//Add element in front of the snake's head
 	node_t* new_snake = malloc(sizeof(node_t));
 	new_snake->x_coord = new_x_coord;
@@ -170,6 +234,11 @@ int check_collision(node_t *snake) {
 	return check_collision_self(snake) || check_collision_obstacles(snake) || check_collision_border(snake);
 }
 
+int check_collision_food(node_t *snake) {
+	if (snake->x_coord == MOMEALA_X && snake->y_coord == MOMEALA_Y)
+		return 1;
+	return 0;
+}
 /**
 * Changes snake direction only if the new direction is not oposite to the
 * current direction
@@ -183,7 +252,7 @@ void change_snake_direction (int new_direction) {
 /**
 * Creates and returns a snake positioned @ the middle of the screen
 */
-node_t* get_new_snake (int sname_size) {
+node_t* get_new_snake () {
 	int i;
 	node_t *snake_head = malloc(sizeof(node_t));
 	node_t *curr = snake_head;
@@ -203,6 +272,45 @@ node_t* get_new_snake (int sname_size) {
 	}
 
 	return snake_head;
+}
+
+void draw_snake(node_t *snake) {
+	int head_x_coord = snake->x_coord;
+	int head_y_coord = snake->y_coord;
+	
+	lcd_setpixel(head_y_coord, head_x_coord);
+
+	snake = snake->next;
+	while (snake != NULL) {
+		lcd_setpixel(snake->y_coord, snake->x_coord);
+		snake = snake->next;
+	}
+}
+
+void draw_obstacles() {
+	int i;
+	for (i = 0; i < MAX_OBSTACLES; i++) {
+		if (OBSTACLES_X[i] != 0 || OBSTACLES_Y[i] != 0)
+			lcd_setpixel(OBSTACLES_Y[i], OBSTACLES_X[i]);
+		else
+			break;
+	}
+}
+
+void draw_borders() {
+	int i;
+	for (i = 0; i < 47; i++) {
+		lcd_setpixel(0, i);
+		lcd_setpixel(83, i);
+	}
+	for (i = 0; i < 83; i++) {
+		lcd_setpixel(i, 0);
+		lcd_setpixel(i, 47);	
+	}
+}
+
+void draw_food() {
+	lcd_setpixel(MOMEALA_Y, MOMEALA_X);
 }
 
 /* intreruperea pentru pin change PB0 si PB1 */
@@ -247,32 +355,122 @@ void IO_init() {
 void set_D7_high() { PORTD |= (1 << PD7); }
 void set_D7_low() { PORTD &= ~(1 << PD7); }
 
+void clearLCD() {
+	lcd_clear();
+	lcd_update();
+}
+
+void generate_food(node_t *snake) {
+	int head_x_coord = snake->x_coord;
+	int head_y_coord = snake->y_coord;
+	int ok = 0, i;
+	
+	node_t *curr;
+	
+	MOMEALA_X = rand() % SCREEN_HEIGHT;
+	MOMEALA_Y = rand() % SCREEN_WIDTH;
+	
+	
+	while (ok == 0) {
+		ok = 1;
+		
+		curr = snake;
+		if (MOMEALA_X == 0 || MOMEALA_X == 47 || MOMEALA_Y == 0 || MOMEALA_Y == 83)
+			ok = 0;
+		
+		for (i = 0; i < MAX_OBSTACLES; i++)
+			if (MOMEALA_X == OBSTACLES_X[i] && MOMEALA_Y == OBSTACLES_Y[i]) {
+				ok = 0;
+				break;
+			}
+		
+		if (head_x_coord == MOMEALA_X && head_y_coord == MOMEALA_Y)
+			ok = 0;
+		else {
+			curr = curr->next;
+			while (curr != NULL) {
+				if (MOMEALA_X == curr->x_coord && MOMEALA_Y == curr->y_coord) {
+					ok = 0;
+					break;
+				}
+				curr = curr->next;
+			}
+		}
+		
+	}
+}
+
+void hello() {
+	clearLCD();
+	
+	lcd_gotoXY(0,0);
+	lcd_str("Oancea");
+	lcd_gotoXY(0,1);
+	lcd_str("Catalin");
+	
+	lcd_gotoXY(0,3);
+	lcd_str("PM 2016");
+	lcd_gotoXY(0,4);
+	lcd_str("Snake");
+	
+}
+
+void game_over() {
+	clearLCD();
+	char *score = (char*) malloc(4 * sizeof(char));
+	itoa(SCORE, score, 10);
+	lcd_gotoXY(1,1);
+	lcd_str("GAME OVER");
+	
+	lcd_gotoXY(1,2);
+	lcd_str(strcat("SCORE: ", score));
+	
+}
 int main(void) {
 	
 
 	/* LCD init */
 	lcd_init();
-	lcd_contrast(0x40);
-	lcd_goto_xy(1, 1);
-	lcd_str("Catalin");
-	
+	clearLCD();
+	//lcd_contrast(0x40);
 	
 	IO_init();
-	
+	hello();
 	PORTD |= (1 << PD7);
-	_delay_ms(1000);
+	_delay_ms(3000);
 	PORTD &= ~(1 << PD7);
-	_delay_ms(1000);
 	
-	node_t *snake = get_new_snake(SNAKE_INITIAL_LENGTH);
-	get_level_1_obstacles();
+	node_t *snake = get_new_snake();
 	
-	while (1){
+	generate_food(snake);
+
+	
+	while (1) {
 		snake = move_snake(snake);
+		
+		clearLCD();
+		draw_borders();
+		draw_obstacles();
+		draw_food();
+		draw_snake(snake);
+		
 		if (check_collision(snake)) {
 			set_D7_high();
+			game_over();
 			return 0;
 		}
+		
+		if (check_collision_food(snake)) {
+			SCORE++;
+			snake = increase_snake(snake);
+			generate_food(snake);
+		}
+		
+		if (SCORE >= 10)
+			get_level_2_obstacles();
+		
+		else if (SCORE >= 3)
+			get_level_1_obstacles();
 		
 		_delay_ms(SNAKE_SPEED);
 	}
