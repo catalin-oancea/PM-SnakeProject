@@ -33,6 +33,6 @@
 ## EAGLE Scheme
 ![Screen Shot](images/eagle_proj_schema.png)
 
-##Pictures
+## Pictures
 <img src="images/final.jpg" alt="Drawing" width=400px align=left/>
 <img src="images/debugging.jpg" alt="Drawing" width=400px align=left/>
